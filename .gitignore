@@ -3,3 +3,6 @@ target
 clojure.iws
 clojure.ipr
 nbproject/private/
+.classpath
+.project
+.settings
