@@ -182,6 +182,8 @@ final static Keyword TAG_KEY = Keyword.intern(null, "tag");
 final static Keyword CONST_KEY = Keyword.intern(null, "const");
 final static public Var AGENT = Var.intern(CLOJURE_NS, Symbol.intern("*agent*"), null).setDynamic();
 final static public Var READEVAL = Var.intern(CLOJURE_NS, Symbol.intern("*read-eval*"), T).setDynamic();
+final static public Var DATA_READERS = Var.intern(CLOJURE_NS, Symbol.intern("*data-readers*"), RT.map()).setDynamic();
+final static public Var DEFAULT_DATA_READERS = Var.intern(CLOJURE_NS, Symbol.intern("default-data-readers"), RT.map());
 final static public Var ASSERT = Var.intern(CLOJURE_NS, Symbol.intern("*assert*"), T).setDynamic();
 final static public Var MATH_CONTEXT = Var.intern(CLOJURE_NS, Symbol.intern("*math-context*"), null).setDynamic();
 static Keyword LINE_KEY = Keyword.intern(null, "line");
@@ -699,6 +701,10 @@ static public Object contains(Object coll, Object key){
 	else if(coll instanceof Map) {
 		Map m = (Map) coll;
 		return m.containsKey(key) ? T : F;
+	}
+	else if(coll instanceof Set) {
+		Set s = (Set) coll;
+		return s.contains(key) ? T : F;
 	}
 	else if(key instanceof Number && (coll instanceof String || coll.getClass().isArray())) {
 		int n = ((Number) key).intValue();

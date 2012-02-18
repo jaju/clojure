@@ -18,6 +18,9 @@
 
 (ns clojure.test-clojure.reader
   (:use clojure.test)
+  (:use [clojure.instant :only [read-instant-date
+                                read-instant-calendar
+                                read-instant-timestamp]])
   (:import clojure.lang.BigInt))
 
 ;; Symbols
@@ -315,3 +318,50 @@
 ;; (read stream eof-is-error eof-value is-recursive)
 
 (deftest t-read)
+
+
+(deftest Instants
+  (testing "Instants are read as java.util.Date by default"
+    (is (= java.util.Date (class #inst "2010-11-12T13:14:15.666"))))
+  (let [s "#inst \"2010-11-12T13:14:15.666-06:00\""]
+    (binding [*data-readers* {'inst read-instant-date}]
+      (testing "read-instant-date produces java.util.Date"
+        (is (= java.util.Date (class (read-string s)))))
+      (testing "java.util.Date instants round-trips"
+        (is (= (-> s read-string)
+               (-> s read-string pr-str read-string)))))
+    (binding [*data-readers* {'inst read-instant-calendar}]
+      (testing "read-instant-calendar produces java.util.Calendar"
+        (is (instance? java.util.Calendar (read-string s))))
+      (testing "java.util.Calendar round-trips"
+        (is (= (-> s read-string)
+               (-> s read-string pr-str read-string))))
+      (testing "java.util.Calendar remembers timezone in literal"
+        (is (= "#inst \"2010-11-12T13:14:15.666-06:00\""
+               (-> s read-string pr-str)))
+        (is (= (-> s read-string)
+               (-> s read-string pr-str read-string))))
+      (testing "java.util.Calendar preserves milliseconds"
+        (is (= 666 (-> s read-string
+                       (.get java.util.Calendar/MILLISECOND)))))))
+  (let [s "#inst \"2010-11-12T13:14:15.123456789\""]
+    (binding [*data-readers* {'inst read-instant-timestamp}]
+      (testing "read-instant-timestamp produces java.sql.Timestamp"
+        (is (= java.sql.Timestamp (class (read-string s)))))
+      (testing "java.sql.Timestamp preserves nanoseconds"
+        (is (= 123456789 (-> s read-string .getNanos)))
+        ;; bad ATM 
+        #_(is (= 123456789 (-> s read-string pr-str read-string .getNanos)))))))
+
+;; UUID Literals
+;; #uuid "550e8400-e29b-41d4-a716-446655440000"
+
+(deftest UUID
+  (is (= java.util.UUID (class #uuid "550e8400-e29b-41d4-a716-446655440000")))
+  (is (.equals #uuid "550e8400-e29b-41d4-a716-446655440000"
+               #uuid "550e8400-e29b-41d4-a716-446655440000"))
+  (is (not (identical? #uuid "550e8400-e29b-41d4-a716-446655440000"
+                       #uuid "550e8400-e29b-41d4-a716-446655440000")))
+  (is (= 4 (.version #uuid "550e8400-e29b-41d4-a716-446655440000")))
+  (is (= (print-str #uuid "550e8400-e29b-41d4-a716-446655440000")
+         "#uuid \"550e8400-e29b-41d4-a716-446655440000\"")))

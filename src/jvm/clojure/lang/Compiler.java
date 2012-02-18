@@ -877,10 +877,10 @@ static public abstract class HostExpr implements Expr, MaybePrimitiveExpr{
 			Expr instance = null;
 			if(c == null)
 				instance = analyze(context == C.EVAL ? context : C.EXPRESSION, RT.second(form));
-			boolean maybeField = RT.length(form) == 3 &&
-			                     (RT.third(form) instanceof Symbol
-									|| RT.third(form) instanceof Keyword);
-			if(maybeField && !(RT.third(form) instanceof Keyword))
+
+			boolean maybeField = RT.length(form) == 3 && (RT.third(form) instanceof Symbol);
+
+			if(maybeField && !(((Symbol)RT.third(form)).name.charAt(0) == '-'))
 				{
 				Symbol sym = (Symbol) RT.third(form);
 				if(c != null)
@@ -888,11 +888,12 @@ static public abstract class HostExpr implements Expr, MaybePrimitiveExpr{
 				else if(instance != null && instance.hasJavaClass() && instance.getJavaClass() != null)
 					maybeField = Reflector.getMethods(instance.getJavaClass(), 0, munge(sym.name), false).size() == 0;
 				}
+
 			if(maybeField)    //field
 				{
-				Symbol sym = (RT.third(form) instanceof Keyword)?
-				             ((Keyword)RT.third(form)).sym
-							:(Symbol) RT.third(form);
+				Symbol sym = (((Symbol)RT.third(form)).name.charAt(0) == '-') ?
+					Symbol.intern(((Symbol)RT.third(form)).name.substring(1))
+						:(Symbol) RT.third(form);
 				Symbol tag = tagOf(form);
 				if(c != null) {
 					return new StaticFieldExpr(line, c, munge(sym.name), tag);
@@ -6260,7 +6261,7 @@ static public Var isMacro(Object op) {
 		return null;
 	if(op instanceof Symbol || op instanceof Var)
 		{
-		Var v = (op instanceof Var) ? (Var) op : lookupVar((Symbol) op, false);
+                Var v = (op instanceof Var) ? (Var) op : lookupVar((Symbol) op, false, false);
 		if(v != null && v.isMacro())
 			{
 			if(v.ns != currentNS() && !v.isPublic())
@@ -6757,7 +6758,7 @@ static public Object maybeResolveIn(Namespace n, Symbol sym) {
 }
 
 
-static Var lookupVar(Symbol sym, boolean internNew) {
+static Var lookupVar(Symbol sym, boolean internNew, boolean registerMacro) {
 	Var var = null;
 
 	//note - ns-qualified vars in other namespaces must already exist
@@ -6796,9 +6797,12 @@ static Var lookupVar(Symbol sym, boolean internNew) {
 				throw Util.runtimeException("Expecting var, but " + sym + " is mapped to " + o);
 				}
 			}
-	if(var != null)
+	if(var != null && (!var.isMacro() || registerMacro))
 		registerVar(var);
 	return var;
+}
+static Var lookupVar(Symbol sym, boolean internNew) {
+    return lookupVar(sym, internNew, true);
 }
 
 private static void registerVar(Var var) {
@@ -6894,7 +6898,8 @@ public static Object load(Reader rdr, String sourcePath, String sourceName) {
 			       LINE_AFTER, pushbackReader.getLineNumber()
 			       ,RT.UNCHECKED_MATH, RT.UNCHECKED_MATH.deref()
 					,RT.WARN_ON_REFLECTION, RT.WARN_ON_REFLECTION.deref()
-			));
+			       ,RT.DATA_READERS, RT.DATA_READERS.deref()
+                        ));
 
 	try
 		{
@@ -7019,6 +7024,7 @@ public static Object compile(Reader rdr, String sourcePath, String sourceName) t
 			       VARS, PersistentHashMap.EMPTY
 					,RT.UNCHECKED_MATH, RT.UNCHECKED_MATH.deref()
 					,RT.WARN_ON_REFLECTION, RT.WARN_ON_REFLECTION.deref()
+					,RT.DATA_READERS, RT.DATA_READERS.deref()
 			   //    ,LOADER, RT.makeClassLoader()
 			));
 
@@ -7244,7 +7250,7 @@ static public class NewInstanceExpr extends ObjExpr{
 			//use array map to preserve ctor order
 			ret.closes = new PersistentArrayMap(closesvec);
 			ret.fields = fmap;
-			for(int i=fieldSyms.count()-1;i >= 0 && ((Symbol)fieldSyms.nth(i)).name.startsWith("__");--i)
+			for(int i=fieldSyms.count()-1;i >= 0 && (((Symbol)fieldSyms.nth(i)).name.equals("__meta") || ((Symbol)fieldSyms.nth(i)).name.equals("__extmap"));--i)
 				ret.altCtorDrops++;
 			}
 		//todo - set up volatiles
