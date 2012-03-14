@@ -239,6 +239,29 @@ static final public Var INSTANCE = Var.intern(Namespace.findOrCreate(Symbol.inte
 static final public Var ADD_ANNOTATIONS = Var.intern(Namespace.findOrCreate(Symbol.intern("clojure.core")),
                                             Symbol.intern("add-annotations"));
 
+static final public Keyword disableLocalsClearingKey = Keyword.intern("disable-locals-clearing");
+static final public Keyword elideMetaKey = Keyword.intern("elide-meta");
+
+static final public Var COMPILER_OPTIONS = Var.intern(Namespace.findOrCreate(Symbol.intern("clojure.core")),
+                                                      Symbol.intern("*compiler-options*"), null).setDynamic();
+
+static public Object getCompilerOption(Keyword k){
+	return RT.get(COMPILER_OPTIONS.deref(),k);
+}
+
+static Object elideMeta(Object m){
+        Collection<Object> elides = (Collection<Object>) getCompilerOption(elideMetaKey);
+        if(elides != null)
+            {
+            for(Object k : elides)
+                {
+//                System.out.println("Eliding:" + k + " : " + RT.get(m, k));
+                m = RT.dissoc(m, k);
+                }
+//            System.out.println("Remaining: " + RT.keys(m));
+            }
+        return m;
+    }
 
 //Integer
 static final public Var LINE = Var.create(0).setDynamic();
@@ -490,6 +513,7 @@ static class DefExpr implements Expr{
 //					.without(Keyword.intern(null, "name"))
 //					.without(Keyword.intern(null, "added"))
 //					.without(Keyword.intern(null, "static"));
+            mm = (IPersistentMap) elideMeta(mm);
 			Expr meta = mm.count()==0 ? null:analyze(context == C.EVAL ? context : C.EXPRESSION, mm);
 			return new DefExpr((String) SOURCE.deref(), (Integer) LINE.deref(),
 			                   v, analyze(context == C.EVAL ? context : C.EXPRESSION, RT.third(form), v.sym.name),
@@ -1140,7 +1164,7 @@ static class StaticFieldExpr extends FieldExpr implements AssignableExpr{
 			}
 		catch(NoSuchFieldException e)
 			{
-			throw Util.runtimeException(e);
+			throw Util.sneakyThrow(e);
 			}
 		this.tag = tag;
 	}
@@ -1213,7 +1237,7 @@ static Class maybePrimitiveType(Expr e){
 		}
 	catch(Exception ex)
 		{
-		throw Util.runtimeException(ex);
+		throw Util.sneakyThrow(ex);
 		}
 	return null;
 }
@@ -2378,7 +2402,7 @@ public static class NewExpr implements Expr{
 				}
 			catch(Exception e)
 				{
-				throw Util.runtimeException(e);
+				throw Util.sneakyThrow(e);
 				}
 			}
 		return Reflector.invokeConstructor(c, argvals);
@@ -2536,7 +2560,7 @@ public static class IfExpr implements Expr, MaybePrimitiveExpr{
 			}
 		catch(Exception e)
 			{
-			throw Util.runtimeException(e);
+			throw Util.sneakyThrow(e);
 			}
 		if(emitUnboxed)
 			((MaybePrimitiveExpr)thenExpr).emitUnboxed(context, objx, gen);
@@ -3174,7 +3198,7 @@ static class StaticInvokeExpr implements Expr, MaybePrimitiveExpr{
 					}
 				catch(Exception ex)
 					{
-					throw Util.runtimeException(ex);
+					throw Util.sneakyThrow(ex);
 					}
 				}
 			IPersistentVector restArgs = RT.subvec(args,paramclasses.length - 1,args.count());
@@ -3696,7 +3720,7 @@ static public class FnExpr extends ObjExpr{
 			}
 		catch(IOException e)
 			{
-			throw Util.runtimeException(e);
+			throw Util.sneakyThrow(e);
 			}
 		fn.getCompiledClass();
 
@@ -4465,7 +4489,8 @@ static public class ObjExpr implements Expr{
 			if(value instanceof IObj && RT.count(((IObj) value).meta()) > 0)
 				{
 				gen.checkCast(IOBJ_TYPE);
-				emitValue(((IObj) value).meta(), gen);
+                Object m = ((IObj) value).meta();
+				emitValue(elideMeta(m), gen);
 				gen.checkCast(IPERSISTENTMAP_TYPE);
 				gen.invokeInterface(IOBJ_TYPE,
 				                    Method.getMethod("clojure.lang.IObj withMeta(clojure.lang.IPersistentMap)"));
@@ -4539,7 +4564,7 @@ static public class ObjExpr implements Expr{
 				}
 			catch(Exception e)
 				{
-				throw Util.runtimeException(e);
+				throw Util.sneakyThrow(e);
 				}
 		return compiledClass;
 	}
@@ -4553,7 +4578,7 @@ static public class ObjExpr implements Expr{
 			}
 		catch(Exception e)
 			{
-			throw Util.runtimeException(e);
+			throw Util.sneakyThrow(e);
 			}
 	}
 
@@ -5053,7 +5078,7 @@ public static class FnMethod extends ObjMethod{
 			}
 		catch(Exception e)
 			{
-			throw Util.runtimeException(e);
+			throw Util.sneakyThrow(e);
 			}
 		finally
 			{
@@ -5117,7 +5142,7 @@ public static class FnMethod extends ObjMethod{
 			}
 		catch(Exception e)
 			{
-			throw Util.runtimeException(e);
+			throw Util.sneakyThrow(e);
 			}
 		finally
 			{
@@ -5431,7 +5456,7 @@ public static class LocalBinding{
 	public final String name;
 	public final boolean isArg;
     public final PathNode clearPathRoot;
-	public boolean canBeCleared = true;
+	public boolean canBeCleared = !RT.booleanCast(getCompilerOption(disableLocalsClearingKey));
 	public boolean recurMistmatch = false;
 
     public LocalBinding(int num, Symbol sym, Symbol tag, Expr init, boolean isArg,PathNode clearPathRoot)
@@ -6058,7 +6083,7 @@ public static class RecurExpr implements Expr{
 					}
 				catch(Exception e)
 					{
-					throw Util.runtimeException(e);
+					throw Util.sneakyThrow(e);
 					}
 				}
 			else
@@ -6477,7 +6502,7 @@ public static Object eval(Object form, boolean freshLoader) {
 		catch(Throwable e)
 			{
 			if(!(e instanceof RuntimeException))
-				throw Util.runtimeException(e);
+				throw Util.sneakyThrow(e);
 			throw (RuntimeException)e;
 			}
 		finally
@@ -6583,7 +6608,7 @@ static void addAnnotation(Object visitor, IPersistentMap meta){
 	}
 	catch (Exception e)
 		{
-		throw Util.runtimeException(e);
+		throw Util.sneakyThrow(e);
 		}
 }
 
@@ -6594,7 +6619,7 @@ static void addParameterAnnotation(Object visitor, IPersistentMap meta, int i){
 	}
 	catch (Exception e)
 		{
-		throw Util.runtimeException(e);
+		throw Util.sneakyThrow(e);
 		}
 }
 
@@ -7329,7 +7354,7 @@ static public class NewInstanceExpr extends ObjExpr{
 			}
 		catch(IOException e)
 			{
-			throw Util.runtimeException(e);
+			throw Util.sneakyThrow(e);
 			}
 		ret.getCompiledClass();
 		return ret;
@@ -7839,7 +7864,7 @@ public static class NewInstanceMethod extends ObjMethod{
 			}
 		catch(Exception e)
 			{
-			throw Util.runtimeException(e);
+			throw Util.sneakyThrow(e);
 			}
 		finally
 			{
